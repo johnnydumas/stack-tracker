@@ -21,6 +21,13 @@ crons = ["*/15 * * * *", "0 8 * * *", "0 9 * * 1"]
 [observability]
 enabled = true
 
+# Lets the worker import schema.sql as a string, so it can apply the
+# schema itself on first use (no manual `db:migrate:remote` required).
+[[rules]]
+type = "Text"
+globs = ["**/*.sql"]
+fallthrough = true
+
 # Secrets (set these with `wrangler secret put <NAME>`, never commit them here):
 #   APP_PASSCODE           - the passcode you use to unlock the app
 #   VAPID_SUBJECT           - e.g. "mailto:you@example.com"

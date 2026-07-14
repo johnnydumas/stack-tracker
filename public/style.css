@@ -51,6 +51,10 @@ input, textarea, select, button {
 
 ::selection { background: var(--accent-medium); color: #14161a; }
 
+/* The hidden attribute must win over display rules like .gate's flex,
+   otherwise the passcode gate stays visible after unlocking. */
+[hidden] { display: none !important; }
+
 :focus-visible {
   outline: 2px solid var(--accent-medium);
   outline-offset: 2px;

@@ -1,4 +1,4 @@
-import { listOpenTasks, markReminded } from './db.js';
+import { listOpenTasks, markReminded, ensureSchema } from './db.js';
 import { pickStaleTasks } from './util.js';
 import { sendPushToAll } from './push.js';
 
@@ -6,6 +6,7 @@ const DUE_SOON_WINDOW_MS = 15 * 60 * 1000;      // heads-up when due within 15 m
 const ESCALATION_INTERVAL_MS = 3 * 60 * 60 * 1000; // re-nag every 3h while overdue
 
 export async function handleScheduled(event, env) {
+  await ensureSchema(env);
   const now = Date.now();
   switch (event.cron) {
     case '*/15 * * * *':

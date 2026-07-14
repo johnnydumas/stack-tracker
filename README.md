@@ -48,6 +48,9 @@ Then run the schema migration:
 npm run db:migrate:remote
 ```
 
+(If you skip this step, that's OK — the worker applies the schema itself the
+first time it touches an empty database.)
+
 (`npm run db:migrate:local` sets up a local copy for `wrangler dev`, if you want
 to develop locally first.)
 

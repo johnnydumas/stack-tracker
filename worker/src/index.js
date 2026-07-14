@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
   listAllTasks, listOpenTasks, createTask, updateTask, deleteTask,
-  touchTask, saveSubscription, removeSubscription,
+  touchTask, saveSubscription, removeSubscription, ensureSchema,
 } from './db.js';
 import { pickTodayTasks, pickStaleTasks } from './util.js';
 import { sendPushToAll } from './push.js';
@@ -26,7 +26,15 @@ app.use('/api/*', async (c, next) => {
   if (!expected || token !== expected) {
     return c.json({ error: 'unauthorized' }, 401);
   }
+  await ensureSchema(c.env);
   return next();
+});
+
+// Surface unexpected failures as JSON (the frontend expects an
+// { error } body) instead of Hono's default plain-text 500.
+app.onError((err, c) => {
+  console.error('unhandled error', err);
+  return c.json({ error: err.message || 'internal error' }, 500);
 });
 
 app.get('/api/health', (c) => c.json({ ok: true }));

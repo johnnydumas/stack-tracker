@@ -1,4 +1,36 @@
 import { newId, nextDueAt } from './util.js';
+import schemaSql from '../../schema.sql';
+
+let schemaReady;
+
+/**
+ * Applies schema.sql the first time an isolate touches the database.
+ * Every statement is `IF NOT EXISTS`, so this is idempotent and makes a
+ * freshly created D1 database usable without a manual
+ * `npm run db:migrate:remote` step.
+ */
+export function ensureSchema(env) {
+  if (!schemaReady) {
+    schemaReady = applySchema(env).catch((err) => {
+      schemaReady = undefined;
+      throw err;
+    });
+  }
+  return schemaReady;
+}
+
+async function applySchema(env) {
+  const statements = schemaSql
+    .split('\n')
+    .map((line) => line.replace(/--.*$/, ''))
+    .join('\n')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const sql of statements) {
+    await env.DB.prepare(sql).run();
+  }
+}
 
 export async function listOpenTasks(env) {
   const { results } = await env.DB.prepare(
