@@ -30,18 +30,30 @@ async function applySchema(env) {
   for (const sql of statements) {
     await env.DB.prepare(sql).run();
   }
+  // schema.sql's CREATE TABLE IF NOT EXISTS can't add a column to a tasks
+  // table that already existed before activity_id was introduced, so that
+  // one column needs an explicit, idempotent ALTER TABLE.
+  const { results: columns } = await env.DB.prepare(`PRAGMA table_info(tasks)`).all();
+  if (!columns.some((col) => col.name === 'activity_id')) {
+    await env.DB.prepare(`ALTER TABLE tasks ADD COLUMN activity_id TEXT REFERENCES activities(id)`).run();
+  }
 }
+
+const TASK_COLUMNS = `tasks.*, activities.title AS activity_title`;
+const TASK_JOIN = `LEFT JOIN activities ON activities.id = tasks.activity_id`;
 
 export async function listOpenTasks(env) {
   const { results } = await env.DB.prepare(
-    `SELECT * FROM tasks WHERE status = 'open' ORDER BY due_at IS NULL, due_at ASC`
+    `SELECT ${TASK_COLUMNS} FROM tasks ${TASK_JOIN}
+     WHERE status = 'open' ORDER BY due_at IS NULL, due_at ASC`
   ).all();
   return results;
 }
 
 export async function listAllTasks(env, limit = 200) {
   const { results } = await env.DB.prepare(
-    `SELECT * FROM tasks ORDER BY status ASC, due_at IS NULL, due_at ASC LIMIT ?1`
+    `SELECT ${TASK_COLUMNS} FROM tasks ${TASK_JOIN}
+     ORDER BY status ASC, due_at IS NULL, due_at ASC LIMIT ?1`
   ).bind(limit).all();
   return results;
 }
@@ -61,6 +73,7 @@ export async function createTask(env, input) {
     status: 'open',
     due_at: input.due_at != null ? Number(input.due_at) : null,
     recurrence: input.recurrence ? JSON.stringify(input.recurrence) : null,
+    activity_id: input.activity_id || null,
     created_at: now,
     updated_at: now,
     completed_at: null,
@@ -73,12 +86,12 @@ export async function createTask(env, input) {
   }
   await env.DB.prepare(
     `INSERT INTO tasks
-      (id, title, notes, priority, status, due_at, recurrence, created_at, updated_at, completed_at, last_touched_at, reminded_at, escalation_count)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
+      (id, title, notes, priority, status, due_at, recurrence, activity_id, created_at, updated_at, completed_at, last_touched_at, reminded_at, escalation_count)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
   )
     .bind(
       task.id, task.title, task.notes, task.priority, task.status, task.due_at,
-      task.recurrence, task.created_at, task.updated_at, task.completed_at,
+      task.recurrence, task.activity_id, task.created_at, task.updated_at, task.completed_at,
       task.last_touched_at, task.reminded_at, task.escalation_count
     )
     .run();
@@ -104,6 +117,7 @@ export async function updateTask(env, id, patch) {
   if (patch.recurrence !== undefined) {
     next.recurrence = patch.recurrence ? JSON.stringify(patch.recurrence) : null;
   }
+  if (patch.activity_id !== undefined) next.activity_id = patch.activity_id || null;
 
   let spawned = null;
   const completingNow = patch.status === 'done' && existing.status !== 'done';
@@ -141,12 +155,12 @@ export async function updateTask(env, id, patch) {
 
   await env.DB.prepare(
     `UPDATE tasks SET
-      title = ?1, notes = ?2, priority = ?3, status = ?4, due_at = ?5, recurrence = ?6,
-      updated_at = ?7, completed_at = ?8, last_touched_at = ?9, reminded_at = ?10, escalation_count = ?11
-     WHERE id = ?12`
+      title = ?1, notes = ?2, priority = ?3, status = ?4, due_at = ?5, recurrence = ?6, activity_id = ?7,
+      updated_at = ?8, completed_at = ?9, last_touched_at = ?10, reminded_at = ?11, escalation_count = ?12
+     WHERE id = ?13`
   )
     .bind(
-      next.title, next.notes, next.priority, next.status, next.due_at, next.recurrence,
+      next.title, next.notes, next.priority, next.status, next.due_at, next.recurrence, next.activity_id,
       next.updated_at, next.completed_at, next.last_touched_at, next.reminded_at, next.escalation_count,
       id
     )
@@ -190,4 +204,46 @@ export async function listSubscriptions(env) {
 
 export async function removeSubscriptionById(env, id) {
   await env.DB.prepare(`DELETE FROM push_subscriptions WHERE id = ?1`).bind(id).run();
+}
+
+// ---- Activities (aka "projects") ----
+
+export async function listActivities(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT activities.*,
+       SUM(CASE WHEN tasks.status = 'open' THEN 1 ELSE 0 END) AS open_count,
+       SUM(CASE WHEN tasks.status = 'done' THEN 1 ELSE 0 END) AS done_count
+     FROM activities
+     LEFT JOIN tasks ON tasks.activity_id = activities.id
+     GROUP BY activities.id
+     ORDER BY activities.created_at ASC`
+  ).all();
+  return results;
+}
+
+export async function createActivity(env, input) {
+  const title = String(input.title || '').trim();
+  if (!title) throw new Error('title is required');
+  const now = Date.now();
+  const activity = { id: newId(), title, created_at: now, updated_at: now };
+  await env.DB.prepare(
+    `INSERT INTO activities (id, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)`
+  ).bind(activity.id, activity.title, activity.created_at, activity.updated_at).run();
+  return activity;
+}
+
+export async function renameActivity(env, id, title) {
+  const trimmed = String(title || '').trim();
+  if (!trimmed) throw new Error('title is required');
+  const result = await env.DB.prepare(
+    `UPDATE activities SET title = ?1, updated_at = ?2 WHERE id = ?3`
+  ).bind(trimmed, Date.now(), id).run();
+  return result.meta.changes > 0;
+}
+
+// Deleting an activity unassigns its tasks rather than deleting them —
+// a task should never silently disappear because its project was removed.
+export async function deleteActivity(env, id) {
+  await env.DB.prepare(`UPDATE tasks SET activity_id = NULL WHERE activity_id = ?1`).bind(id).run();
+  await env.DB.prepare(`DELETE FROM activities WHERE id = ?1`).bind(id).run();
 }

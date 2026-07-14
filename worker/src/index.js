@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import {
   listAllTasks, listOpenTasks, createTask, updateTask, deleteTask,
   touchTask, saveSubscription, removeSubscription, ensureSchema,
+  listActivities, createActivity, renameActivity, deleteActivity,
 } from './db.js';
 import { pickTodayTasks, pickStaleTasks } from './util.js';
 import { sendPushToAll } from './push.js';
@@ -90,6 +91,39 @@ app.post('/api/tasks/:id/touch', async (c) => {
 
 app.delete('/api/tasks/:id', async (c) => {
   await deleteTask(c.env, c.req.param('id'));
+  return c.json({ ok: true });
+});
+
+// ---- Activities ----
+
+app.get('/api/activities', async (c) => {
+  const activities = await listActivities(c.env);
+  return c.json({ activities });
+});
+
+app.post('/api/activities', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const activity = await createActivity(c.env, body);
+    return c.json({ activity }, 201);
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.patch('/api/activities/:id', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  try {
+    const found = await renameActivity(c.env, c.req.param('id'), body.title);
+    if (!found) return c.json({ error: 'not found' }, 404);
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.delete('/api/activities/:id', async (c) => {
+  await deleteActivity(c.env, c.req.param('id'));
   return c.json({ ok: true });
 });
 

@@ -29,6 +29,7 @@
       <div class="brand">STA<span>CK</span></div>
       <div class="header-actions">
         <button class="icon-btn" id="notif-btn" title="Enable notifications" aria-label="Enable notifications">🔔</button>
+        <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Settings">⚙️</button>
         <button class="icon-btn" id="lock-btn" title="Lock" aria-label="Lock">🔒</button>
       </div>
     </div>
@@ -50,6 +51,9 @@
             <option value="weekly">weekly</option>
           </select>
         </div>
+        <select id="activity-input">
+          <option value="">no project</option>
+        </select>
       </div>
     </form>
 
@@ -60,6 +64,9 @@
       <button class="tab" data-view="all" role="tab">
         All <span class="tab-count" id="count-all"></span>
       </button>
+      <button class="tab" data-view="projects" role="tab">
+        Projects <span class="tab-count" id="count-projects"></span>
+      </button>
       <button class="tab" data-view="stale" role="tab">
         Stale <span class="tab-count" id="count-stale"></span>
       </button>
@@ -67,6 +74,16 @@
 
     <div class="view-title" id="view-title">The Stack</div>
     <div class="task-list" id="task-list"></div>
+  </div>
+
+  <div class="modal" id="settings-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-title">Settings</div>
+      <button class="btn-secondary" id="clear-cache-btn">Clear cache &amp; reload</button>
+      <div class="modal-hint">Wipes the app's offline cache and re-registers the service
+        worker. Use this if the app looks out of date after a deploy.</div>
+      <button class="btn-secondary" id="settings-close-btn">Close</button>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

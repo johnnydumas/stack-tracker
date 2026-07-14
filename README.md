@@ -7,6 +7,9 @@ Workers plan (Workers, D1, and cron triggers are all on the free tier at this sc
 **What it does:**
 - Quick-add tasks with priority, an optional due date, and optional recurrence
 - "Today" view that auto-picks what you should be working on (no manual sorting)
+- Optional projects — house related tasks together (e.g. everything under one
+  Technical Assistance engagement) and see progress per project, while every
+  task still also shows up in the flat, ranked Today/All/Stale feeds
 - Escalating push notifications for overdue tasks, a heads-up for tasks due soon
 - A daily morning planning nudge and a weekly "stale task" digest
 - Installable as an app on your phone's home screen, works offline for viewing
@@ -160,7 +163,6 @@ Some natural next things to ask Claude Code for, in rough order of usefulness:
 - A "snooze" button with a visible snooze count, per the earlier discussion of flagging repeatedly-deferred tasks
 - Swipe-to-delete on mobile instead of a tap target
 - Self-hosting the Google Fonts instead of loading them from a CDN, for full offline support
-- Tags/projects if task volume grows past what flat priority sorting can handle
 
 ## Local development
 

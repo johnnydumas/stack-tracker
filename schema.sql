@@ -1,5 +1,12 @@
 -- Stack: task tracker schema
 
+CREATE TABLE IF NOT EXISTS activities (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -8,6 +15,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done')),
   due_at INTEGER,                 -- unix ms, nullable
   recurrence TEXT,                -- JSON string, e.g. {"type":"daily"} or {"type":"every_n_days","n":3}, nullable
+  activity_id TEXT REFERENCES activities(id),  -- nullable; the "project" a task is housed under
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   completed_at INTEGER,
@@ -19,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks (due_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_last_touched ON tasks (last_touched_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_activity ON tasks (activity_id);
 
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id TEXT PRIMARY KEY,
