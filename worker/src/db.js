@@ -27,15 +27,28 @@ async function applySchema(env) {
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean);
+
+  // Tables first: CREATE TABLE IF NOT EXISTS is a no-op against a tasks
+  // table that predates activity_id, so that column needs its own
+  // idempotent ALTER TABLE — and it must run before any CREATE INDEX on
+  // activity_id, or the index statement fails on a column that isn't
+  // there yet for a table that already existed pre-migration.
   for (const sql of statements) {
-    await env.DB.prepare(sql).run();
+    if (/^CREATE TABLE/i.test(sql)) await env.DB.prepare(sql).run();
   }
-  // schema.sql's CREATE TABLE IF NOT EXISTS can't add a column to a tasks
-  // table that already existed before activity_id was introduced, so that
-  // one column needs an explicit, idempotent ALTER TABLE.
+
   const { results: columns } = await env.DB.prepare(`PRAGMA table_info(tasks)`).all();
   if (!columns.some((col) => col.name === 'activity_id')) {
-    await env.DB.prepare(`ALTER TABLE tasks ADD COLUMN activity_id TEXT REFERENCES activities(id)`).run();
+    try {
+      await env.DB.prepare(`ALTER TABLE tasks ADD COLUMN activity_id TEXT REFERENCES activities(id)`).run();
+    } catch (err) {
+      // Another isolate may have won the race and already added it.
+      if (!/duplicate column name/i.test(err.message)) throw err;
+    }
+  }
+
+  for (const sql of statements) {
+    if (!/^CREATE TABLE/i.test(sql)) await env.DB.prepare(sql).run();
   }
 }
 
