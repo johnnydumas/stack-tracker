@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stack-shell-v1';
+const CACHE_NAME = 'stack-shell-v2';
 const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -15,25 +15,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Network-first for API calls, cache-first for the app shell.
+// Network-first for everything, including the app shell, so a fresh
+// deploy is visible on the very next load instead of one load behind.
+// The cache is only a fallback for when there's no network (offline viewing).
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
   if (url.pathname.startsWith('/api/')) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(event.request)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 
