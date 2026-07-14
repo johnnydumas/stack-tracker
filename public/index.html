@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Stack</title>
+  <meta name="description" content="A no-frills task tracker that nags you until things get done." />
+  <meta name="theme-color" content="#14161a" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Passcode gate -->
+  <div class="gate" id="gate">
+    <div class="gate-card">
+      <div class="gate-mark">STA<span>CK</span></div>
+      <div class="gate-sub">what's on top, do that.</div>
+      <input id="passcode-input" type="password" inputmode="numeric" placeholder="passcode" autocomplete="off" />
+      <div class="gate-error" id="gate-error"></div>
+      <button class="btn-primary" id="unlock-btn">Unlock</button>
+    </div>
+  </div>
+
+  <!-- Main app, shown after unlock -->
+  <div class="app" id="app" hidden>
+    <div class="header">
+      <div class="brand">STA<span>CK</span></div>
+      <div class="header-actions">
+        <button class="icon-btn" id="notif-btn" title="Enable notifications" aria-label="Enable notifications">🔔</button>
+        <button class="icon-btn" id="lock-btn" title="Lock" aria-label="Lock">🔒</button>
+      </div>
+    </div>
+
+    <form class="quick-add" id="quick-add-form">
+      <div class="quick-add-row">
+        <input type="text" id="title-input" placeholder="Add a task…" autocomplete="off" required maxlength="200" />
+        <button type="submit" class="quick-add-submit" aria-label="Add task">+</button>
+      </div>
+      <div class="quick-add-options">
+        <button type="button" class="chip priority-low" data-priority="low">low</button>
+        <button type="button" class="chip priority-medium" data-priority="medium" data-active="true">medium</button>
+        <button type="button" class="chip priority-high" data-priority="high">high</button>
+        <input type="datetime-local" id="due-input" />
+        <div class="quick-add-recur">
+          <select id="recur-input">
+            <option value="">no repeat</option>
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+          </select>
+        </div>
+      </div>
+    </form>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" data-view="today" data-active="true" role="tab">
+        Today <span class="tab-count" id="count-today"></span>
+      </button>
+      <button class="tab" data-view="all" role="tab">
+        All <span class="tab-count" id="count-all"></span>
+      </button>
+      <button class="tab" data-view="stale" role="tab">
+        Stale <span class="tab-count" id="count-stale"></span>
+      </button>
+    </div>
+
+    <div class="view-title" id="view-title">The Stack</div>
+    <div class="task-list" id="task-list"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

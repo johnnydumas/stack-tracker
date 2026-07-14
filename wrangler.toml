@@ -1,0 +1,28 @@
+name = "stack-task-tracker"
+main = "worker/src/index.js"
+compatibility_date = "2026-07-14"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stack-db"
+database_id = "76f9c319-da53-4774-af79-d0e563008252"
+
+# Reminder sweep: checks for due/overdue tasks every 15 minutes.
+# Morning planning prompt: 8am daily (UTC — adjust the hour for your timezone).
+# Weekly stale-task digest: 9am every Monday (UTC).
+[triggers]
+crons = ["*/15 * * * *", "0 8 * * *", "0 9 * * 1"]
+
+[observability]
+enabled = true
+
+# Secrets (set these with `wrangler secret put <NAME>`, never commit them here):
+#   APP_PASSCODE           - the passcode you use to unlock the app
+#   VAPID_SUBJECT           - e.g. "mailto:you@example.com"
+#   VAPID_PUBLIC_KEY        - from `npx web-push generate-vapid-keys`
+#   VAPID_PRIVATE_KEY       - from `npx web-push generate-vapid-keys`
