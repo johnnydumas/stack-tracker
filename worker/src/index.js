@@ -4,6 +4,7 @@ import {
   listAllTasks, listOpenTasks, createTask, updateTask, deleteTask,
   touchTask, saveSubscription, removeSubscription, ensureSchema,
   listActivities, createActivity, renameActivity, deleteActivity,
+  getSettings, updateSettings,
 } from './db.js';
 import { pickTodayTasks, pickStaleTasks } from './util.js';
 import { sendPushToAll } from './push.js';
@@ -125,6 +126,19 @@ app.patch('/api/activities/:id', async (c) => {
 app.delete('/api/activities/:id', async (c) => {
   await deleteActivity(c.env, c.req.param('id'));
   return c.json({ ok: true });
+});
+
+// ---- Settings ----
+
+app.get('/api/settings', async (c) => {
+  const settings = await getSettings(c.env);
+  return c.json({ settings });
+});
+
+app.patch('/api/settings', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const settings = await updateSettings(c.env, body);
+  return c.json({ settings });
 });
 
 // ---- Push ----

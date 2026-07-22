@@ -1,9 +1,8 @@
-import { listOpenTasks, markReminded, ensureSchema } from './db.js';
+import { listOpenTasks, markReminded, ensureSchema, getSettings } from './db.js';
 import { pickStaleTasks } from './util.js';
 import { sendPushToAll } from './push.js';
 
 const DUE_SOON_WINDOW_MS = 15 * 60 * 1000;      // heads-up when due within 15 min
-const ESCALATION_INTERVAL_MS = 3 * 60 * 60 * 1000; // re-nag every 3h while overdue
 
 export async function handleScheduled(event, env) {
   await ensureSchema(env);
@@ -24,6 +23,10 @@ export async function handleScheduled(event, env) {
 }
 
 async function sendReminders(env, now) {
+  const settings = await getSettings(env);
+  if (!settings.reminders_enabled) return;
+  const escalationMs = settings.escalation_hours * 60 * 60 * 1000;
+
   const open = await listOpenTasks(env);
 
   for (const task of open) {
@@ -35,7 +38,7 @@ async function sendReminders(env, now) {
 
     const dueForReminder =
       task.reminded_at == null ||
-      (isOverdue && now - task.reminded_at >= ESCALATION_INTERVAL_MS);
+      (isOverdue && now - task.reminded_at >= escalationMs);
     if (!dueForReminder) continue;
 
     const title = isOverdue ? 'Overdue' : 'Coming up';

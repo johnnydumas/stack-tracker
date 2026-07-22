@@ -260,3 +260,33 @@ export async function deleteActivity(env, id) {
   await env.DB.prepare(`UPDATE tasks SET activity_id = NULL WHERE activity_id = ?1`).bind(id).run();
   await env.DB.prepare(`DELETE FROM activities WHERE id = ?1`).bind(id).run();
 }
+
+// ---- Settings ----
+
+export const ESCALATION_HOUR_OPTIONS = [1, 2, 3, 6, 12, 24];
+
+export async function getSettings(env) {
+  const row = await env.DB.prepare(
+    `SELECT reminders_enabled, escalation_hours FROM settings WHERE id = 1`
+  ).first();
+  return {
+    reminders_enabled: Boolean(row?.reminders_enabled ?? 1),
+    escalation_hours: row?.escalation_hours ?? 3,
+  };
+}
+
+export async function updateSettings(env, patch) {
+  const current = await getSettings(env);
+  const next = {
+    reminders_enabled:
+      patch.reminders_enabled !== undefined ? Boolean(patch.reminders_enabled) : current.reminders_enabled,
+    escalation_hours:
+      patch.escalation_hours !== undefined && ESCALATION_HOUR_OPTIONS.includes(Number(patch.escalation_hours))
+        ? Number(patch.escalation_hours)
+        : current.escalation_hours,
+  };
+  await env.DB.prepare(
+    `UPDATE settings SET reminders_enabled = ?1, escalation_hours = ?2 WHERE id = 1`
+  ).bind(next.reminders_enabled ? 1 : 0, next.escalation_hours).run();
+  return next;
+}

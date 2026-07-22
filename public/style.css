@@ -230,7 +230,7 @@ input, textarea, select, button {
 .chip.priority-medium[data-active="true"] { border-color: var(--accent-medium); color: var(--accent-medium); }
 .chip.priority-low[data-active="true"] { border-color: var(--accent-low); color: var(--accent-low); }
 
-.quick-add input[type="datetime-local"] {
+.quick-add-options input[type="datetime-local"] {
   background: var(--panel-alt);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -245,7 +245,7 @@ input, textarea, select, button {
   gap: 6px;
 }
 
-.quick-add-recur select {
+.quick-add-options select {
   background: var(--panel-alt);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -424,6 +424,21 @@ input, textarea, select, button {
 
 .task-delete:hover { color: var(--accent-high); background: rgba(226, 87, 76, 0.1); }
 
+.task-edit {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-edit:hover { color: var(--accent-medium); background: rgba(232, 163, 61, 0.1); }
+
 .empty-state {
   text-align: center;
   padding: 48px 20px;
@@ -596,6 +611,61 @@ input, textarea, select, button {
   font-size: 12px;
   line-height: 1.4;
   margin-bottom: 14px;
+}
+
+.modal-toggle-row, .modal-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.modal-select-row select {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.modal-toggle-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-medium);
+}
+
+/* ---- Task edit modal ---- */
+
+#task-edit-form {
+  display: flex;
+  flex-direction: column;
+}
+
+#task-edit-form input[type="text"],
+#task-edit-form textarea {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 15px;
+  margin-bottom: 10px;
+  resize: vertical;
+}
+
+#task-edit-form .quick-add-options {
+  margin: 0 0 16px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-actions .btn-secondary,
+.modal-actions .btn-primary {
+  margin-bottom: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -36,3 +36,12 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   auth TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+-- Singleton row (id is always 1) holding user-configurable reminder behavior.
+CREATE TABLE IF NOT EXISTS settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  reminders_enabled INTEGER NOT NULL DEFAULT 1,
+  escalation_hours INTEGER NOT NULL DEFAULT 3
+);
+
+INSERT OR IGNORE INTO settings (id, reminders_enabled, escalation_hours) VALUES (1, 1, 3);

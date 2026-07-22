@@ -79,10 +79,60 @@
   <div class="modal" id="settings-modal" hidden>
     <div class="modal-card">
       <div class="modal-title">Settings</div>
+
+      <label class="modal-toggle-row">
+        <span>Reminders</span>
+        <input type="checkbox" id="reminders-enabled-input" checked />
+      </label>
+
+      <label class="modal-select-row">
+        <span>Remind me every</span>
+        <select id="escalation-hours-input">
+          <option value="1">1 hour</option>
+          <option value="2">2 hours</option>
+          <option value="3">3 hours</option>
+          <option value="6">6 hours</option>
+          <option value="12">12 hours</option>
+          <option value="24">24 hours</option>
+        </select>
+      </label>
+
+      <div class="modal-hint">Controls the overdue and due-soon push notifications.
+        Turn reminders off to stop all of them, or space out the repeat nag for
+        overdue tasks.</div>
+
       <button class="btn-secondary" id="clear-cache-btn">Clear cache &amp; reload</button>
       <div class="modal-hint">Wipes the app's offline cache and re-registers the service
         worker. Use this if the app looks out of date after a deploy.</div>
       <button class="btn-secondary" id="settings-close-btn">Close</button>
+    </div>
+  </div>
+
+  <div class="modal" id="task-edit-modal" hidden>
+    <div class="modal-card">
+      <div class="modal-title">Edit task</div>
+      <form id="task-edit-form">
+        <input type="text" id="edit-title-input" placeholder="Title" autocomplete="off" required maxlength="200" />
+        <textarea id="edit-notes-input" placeholder="Notes (optional)" rows="2" maxlength="1000"></textarea>
+        <div class="quick-add-options">
+          <button type="button" class="chip priority-low" data-priority="low">low</button>
+          <button type="button" class="chip priority-medium" data-priority="medium">medium</button>
+          <button type="button" class="chip priority-high" data-priority="high">high</button>
+          <input type="datetime-local" id="edit-due-input" />
+          <select id="edit-recur-input">
+            <option value="">no repeat</option>
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+          </select>
+          <select id="edit-activity-input">
+            <option value="">no project</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="edit-cancel-btn">Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 

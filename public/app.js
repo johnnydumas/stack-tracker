@@ -11,12 +11,21 @@ const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const settingsCloseBtn = document.getElementById('settings-close-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
+const remindersEnabledInput = document.getElementById('reminders-enabled-input');
+const escalationHoursInput = document.getElementById('escalation-hours-input');
+const taskEditModal = document.getElementById('task-edit-modal');
+const taskEditForm = document.getElementById('task-edit-form');
+const editTitleInput = document.getElementById('edit-title-input');
+const editNotesInput = document.getElementById('edit-notes-input');
+const editDueInput = document.getElementById('edit-due-input');
+const editRecurInput = document.getElementById('edit-recur-input');
+const editActivityInput = document.getElementById('edit-activity-input');
+const editCancelBtn = document.getElementById('edit-cancel-btn');
 const quickAddForm = document.getElementById('quick-add-form');
 const titleInput = document.getElementById('title-input');
 const dueInput = document.getElementById('due-input');
 const recurInput = document.getElementById('recur-input');
 const activityInput = document.getElementById('activity-input');
-const priorityChips = document.querySelectorAll('.chip[data-priority]');
 const tabs = document.querySelectorAll('.tab[data-view]');
 const viewTitle = document.getElementById('view-title');
 const taskList = document.getElementById('task-list');
@@ -26,9 +35,9 @@ const countAll = document.getElementById('count-all');
 const countProjects = document.getElementById('count-projects');
 const countStale = document.getElementById('count-stale');
 
-let selectedPriority = 'medium';
 let currentView = 'today';
 let activities = [];
+let editingTaskId = null;
 
 // ---------------- Auth ----------------
 
@@ -80,10 +89,47 @@ lockBtn.addEventListener('click', () => {
 
 settingsBtn.addEventListener('click', () => {
   settingsModal.hidden = false;
+  loadSettings();
 });
 
 settingsCloseBtn.addEventListener('click', () => {
   settingsModal.hidden = true;
+});
+
+async function loadSettings() {
+  try {
+    const { settings } = await api('/api/settings');
+    remindersEnabledInput.checked = settings.reminders_enabled;
+    escalationHoursInput.value = String(settings.escalation_hours);
+    escalationHoursInput.disabled = !settings.reminders_enabled;
+  } catch (err) {
+    if (err.message !== 'unauthorized') showToast(err.message);
+  }
+}
+
+remindersEnabledInput.addEventListener('change', async () => {
+  escalationHoursInput.disabled = !remindersEnabledInput.checked;
+  try {
+    await api('/api/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ reminders_enabled: remindersEnabledInput.checked }),
+    });
+    showToast(remindersEnabledInput.checked ? 'Reminders on' : 'Reminders off');
+  } catch (err) {
+    showToast(err.message);
+  }
+});
+
+escalationHoursInput.addEventListener('change', async () => {
+  try {
+    await api('/api/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ escalation_hours: Number(escalationHoursInput.value) }),
+    });
+    showToast('Reminder interval updated');
+  } catch (err) {
+    showToast(err.message);
+  }
 });
 
 clearCacheBtn.addEventListener('click', async () => {
@@ -148,38 +194,63 @@ async function loadActivities() {
   }
 }
 
-function populateActivitySelect() {
-  const current = activityInput.value;
-  activityInput.textContent = '';
+function populateActivitySelectEl(selectEl, currentValue) {
+  selectEl.textContent = '';
   const noneOpt = document.createElement('option');
   noneOpt.value = '';
   noneOpt.textContent = 'no project';
-  activityInput.appendChild(noneOpt);
+  selectEl.appendChild(noneOpt);
   for (const a of activities) {
     const opt = document.createElement('option');
     opt.value = a.id;
     opt.textContent = a.title;
-    activityInput.appendChild(opt);
+    selectEl.appendChild(opt);
   }
-  activityInput.value = activities.some((a) => a.id === current) ? current : '';
+  selectEl.value = activities.some((a) => a.id === currentValue) ? currentValue : '';
+}
+
+function populateActivitySelect() {
+  populateActivitySelectEl(activityInput, activityInput.value);
 }
 
 // ---------------- Quick add ----------------
 
-priorityChips.forEach((chip) => {
-  chip.addEventListener('click', () => {
-    selectedPriority = chip.dataset.priority;
-    priorityChips.forEach((c) => c.removeAttribute('data-active'));
-    chip.dataset.active = 'true';
+// Scoped so the quick-add chips and the edit-modal chips (same CSS
+// classes, reused markup) don't share selection state with each other.
+function setupPriorityChips(container, initial) {
+  const chips = container.querySelectorAll('.chip[data-priority]');
+  let selected = initial;
+  const applyActive = () => {
+    chips.forEach((c) => {
+      if (c.dataset.priority === selected) c.dataset.active = 'true';
+      else c.removeAttribute('data-active');
+    });
+  };
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      selected = chip.dataset.priority;
+      applyActive();
+    });
   });
-});
+  applyActive();
+  return {
+    get: () => selected,
+    set: (value) => {
+      selected = value;
+      applyActive();
+    },
+  };
+}
+
+const quickAddPriority = setupPriorityChips(quickAddForm, 'medium');
+const editPriority = setupPriorityChips(taskEditForm, 'medium');
 
 quickAddForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const title = titleInput.value.trim();
   if (!title) return;
 
-  const payload = { title, priority: selectedPriority };
+  const payload = { title, priority: quickAddPriority.get() };
   if (dueInput.value) payload.due_at = new Date(dueInput.value).getTime();
   if (recurInput.value) payload.recurrence = { type: recurInput.value };
   if (activityInput.value) payload.activity_id = activityInput.value;
@@ -353,6 +424,13 @@ function renderTaskCard(task, now, opts = {}) {
 
   if (meta.children.length > 0) body.appendChild(meta);
 
+  const edit = document.createElement('button');
+  edit.type = 'button';
+  edit.className = 'task-edit';
+  edit.setAttribute('aria-label', 'Edit task');
+  edit.textContent = '✎';
+  edit.addEventListener('click', () => openEditModal(task));
+
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'task-delete';
@@ -360,7 +438,7 @@ function renderTaskCard(task, now, opts = {}) {
   del.textContent = '✕';
   del.addEventListener('click', () => deleteTask(task));
 
-  card.append(check, body, del);
+  card.append(check, body, edit, del);
   return card;
 }
 
@@ -574,6 +652,57 @@ async function deleteTask(task) {
     showToast(err.message);
   }
 }
+
+// ---------------- Task editing ----------------
+
+function toLocalDatetimeInputValue(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openEditModal(task) {
+  editingTaskId = task.id;
+  editTitleInput.value = task.title;
+  editNotesInput.value = task.notes || '';
+  editPriority.set(task.priority);
+  editDueInput.value = task.due_at ? toLocalDatetimeInputValue(task.due_at) : '';
+  editRecurInput.value = task.recurrence ? JSON.parse(task.recurrence).type : '';
+  populateActivitySelectEl(editActivityInput, task.activity_id || '');
+  taskEditModal.hidden = false;
+}
+
+function closeEditModal() {
+  taskEditModal.hidden = true;
+  editingTaskId = null;
+}
+
+editCancelBtn.addEventListener('click', closeEditModal);
+
+taskEditForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = editTitleInput.value.trim();
+  if (!title) return;
+
+  const payload = {
+    title,
+    notes: editNotesInput.value.trim() || null,
+    priority: editPriority.get(),
+    due_at: editDueInput.value ? new Date(editDueInput.value).getTime() : null,
+    recurrence: editRecurInput.value ? { type: editRecurInput.value } : null,
+    activity_id: editActivityInput.value || null,
+  };
+
+  try {
+    await api(`/api/tasks/${editingTaskId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Task updated');
+    closeEditModal();
+    loadView(currentView);
+    refreshCounts();
+  } catch (err) {
+    showToast(err.message);
+  }
+});
 
 // ---------------- Toast ----------------
 
