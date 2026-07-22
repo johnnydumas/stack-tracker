@@ -408,6 +408,7 @@ input, textarea, select, button {
 
 .task-meta .recur { color: var(--text-faint); }
 .task-meta .project-tag { color: var(--text-faint); }
+.task-meta .closed { color: var(--text-faint); }
 
 .task-delete {
   flex-shrink: 0;

@@ -63,10 +63,10 @@ export async function listOpenTasks(env) {
   return results;
 }
 
-export async function listAllTasks(env, limit = 200) {
+export async function listDoneTasks(env, limit = 200) {
   const { results } = await env.DB.prepare(
     `SELECT ${TASK_COLUMNS} FROM tasks ${TASK_JOIN}
-     ORDER BY status ASC, due_at IS NULL, due_at ASC LIMIT ?1`
+     WHERE status = 'done' ORDER BY completed_at DESC LIMIT ?1`
   ).bind(limit).all();
   return results;
 }

@@ -34,6 +34,7 @@ const countToday = document.getElementById('count-today');
 const countAll = document.getElementById('count-all');
 const countProjects = document.getElementById('count-projects');
 const countStale = document.getElementById('count-stale');
+const countDone = document.getElementById('count-done');
 
 let currentView = 'today';
 let activities = [];
@@ -279,12 +280,16 @@ tabs.forEach((tab) => {
   });
 });
 
-const VIEW_TITLES = { today: 'The Stack', all: 'Everything', projects: 'Projects', stale: "Hasn't moved in a week" };
+const VIEW_TITLES = {
+  today: 'The Stack', all: 'Everything', projects: 'Projects',
+  stale: "Hasn't moved in a week", done: 'Closed',
+};
 const VIEW_EMPTY = {
   today: { emoji: '✨', headline: 'Nothing on top', sub: 'Add a task above to get started.' },
   all: { emoji: '📭', headline: 'No tasks yet', sub: 'Whatever\u2019s on your mind — add it.' },
   projects: { emoji: '🗂️', headline: 'No projects yet', sub: 'Group related tasks together — add one below.' },
   stale: { emoji: '🧹', headline: 'Nothing stale', sub: 'Everything\u2019s been touched recently.' },
+  done: { emoji: '✅', headline: 'Nothing closed yet', sub: 'Completed tasks show up here.' },
 };
 
 async function loadView(view) {
@@ -310,16 +315,18 @@ async function loadView(view) {
 
 async function refreshCounts() {
   try {
-    const [today, all, stale, projects] = await Promise.all([
+    const [today, all, stale, projects, done] = await Promise.all([
       api('/api/tasks?view=today'),
       api('/api/tasks?view=all'),
       api('/api/tasks?view=stale'),
       api('/api/activities'),
+      api('/api/tasks?view=done'),
     ]);
     countToday.textContent = today.tasks.length || '';
-    countAll.textContent = all.tasks.filter((t) => t.status === 'open').length || '';
+    countAll.textContent = all.tasks.length || '';
     countStale.textContent = stale.tasks.length || '';
     countProjects.textContent = projects.activities.length || '';
+    countDone.textContent = done.tasks.length || '';
   } catch {
     // silent — counts are a nicety, not critical
   }
@@ -388,11 +395,18 @@ function renderTaskCard(task, now, opts = {}) {
   const meta = document.createElement('div');
   meta.className = 'task-meta';
 
-  if (task.due_at) {
+  if (task.status === 'done') {
+    if (task.completed_at) {
+      const closed = document.createElement('span');
+      closed.className = 'closed';
+      closed.textContent = `closed ${formatClosedDate(task.completed_at, now)}`;
+      meta.appendChild(closed);
+    }
+  } else if (task.due_at) {
     const due = document.createElement('span');
     due.className = 'due';
-    const overdue = task.status === 'open' && task.due_at < now;
-    const soon = task.status === 'open' && !overdue && task.due_at - now < 24 * 60 * 60 * 1000;
+    const overdue = task.due_at < now;
+    const soon = !overdue && task.due_at - now < 24 * 60 * 60 * 1000;
     due.dataset.overdue = overdue;
     due.dataset.soon = soon;
     due.textContent = formatDue(task.due_at, now);
@@ -625,6 +639,16 @@ function formatDue(dueAt, now) {
   else if (hours < 24) text = `${hours}h`;
   else text = `${days}d`;
   return diff < 0 ? `overdue ${text}` : `due in ${text}`;
+}
+
+function formatClosedDate(completedAt, now) {
+  const diff = Math.max(0, now - completedAt);
+  const mins = Math.round(diff / 60000);
+  const hours = Math.round(diff / 3600000);
+  const days = Math.round(diff / 86400000);
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
 }
 
 // ---------------- Task actions ----------------

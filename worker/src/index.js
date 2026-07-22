@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
-  listAllTasks, listOpenTasks, createTask, updateTask, deleteTask,
+  listOpenTasks, listDoneTasks, createTask, updateTask, deleteTask,
   touchTask, saveSubscription, removeSubscription, ensureSchema,
   listActivities, createActivity, renameActivity, deleteActivity,
   getSettings, updateSettings,
@@ -63,8 +63,13 @@ app.get('/api/tasks', async (c) => {
     const open = await listOpenTasks(c.env);
     return c.json({ tasks: pickStaleTasks(open, now) });
   }
-  const all = await listAllTasks(c.env);
-  return c.json({ tasks: all });
+  if (view === 'done') {
+    const done = await listDoneTasks(c.env);
+    return c.json({ tasks: done });
+  }
+  // "all" is every open task — closed tasks live under their own view.
+  const open = await listOpenTasks(c.env);
+  return c.json({ tasks: open });
 });
 
 app.post('/api/tasks', async (c) => {
