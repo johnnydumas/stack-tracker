@@ -16,6 +16,13 @@ export { ReminderScheduler };
 
 const app = new Hono();
 
+// API data must never be cached by the browser, a proxy, or a Cloudflare
+// cache rule — otherwise a refresh can show an old copy of the board.
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-store');
+});
+
 // Log slow requests so `wrangler tail` / Workers Logs show where time goes.
 app.use('/api/*', async (c, next) => {
   const started = Date.now();

@@ -229,6 +229,7 @@ const getPasscode = () => {
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
+    cache: 'no-store',
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -247,10 +248,22 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
-const patch = (path, body) => api(path, { method: 'PATCH', body: JSON.stringify(body) });
-const put = (path, body) => api(path, { method: 'PUT', body: JSON.stringify(body) });
-const del = (path) => api(path, { method: 'DELETE' });
+// Writes mark the board as changed (see loadBoard). Notification reads
+// and push settings don't affect the board, so they're excluded.
+async function write(path, options) {
+  const affectsBoard = !path.startsWith('/api/notifications') && !path.startsWith('/api/push');
+  if (affectsBoard) changeEpoch += 1;
+  try {
+    return await api(path, options);
+  } finally {
+    if (affectsBoard) noteChange();
+  }
+}
+
+const post = (path, body) => write(path, { method: 'POST', body: JSON.stringify(body ?? {}) });
+const patch = (path, body) => write(path, { method: 'PATCH', body: JSON.stringify(body) });
+const put = (path, body) => write(path, { method: 'PUT', body: JSON.stringify(body) });
+const del = (path) => write(path, { method: 'DELETE' });
 
 function reportError(err) {
   if (err?.message !== 'unauthorized') toast(err?.message || 'Something went wrong');
@@ -323,9 +336,52 @@ async function showApp() {
 // Board data
 // =====================================================================
 
+// Every change bumps this. A board load that started before a change
+// finished is thrown away (it would overwrite the change with older data)
+// and re-run, so the screen always ends up matching the server.
+let changeEpoch = 0;
+let boardLoading = null;
+let boardReloadQueued = false;
+
+function noteChange() {
+  changeEpoch += 1;
+  syncSoon();
+}
+
+let syncTimer;
+/** Re-fetches the board shortly after a change, to pick up anything the server changed too. */
+function syncSoon() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => loadBoard(), 800);
+}
+
 async function loadBoard() {
+  if (boardLoading) {
+    boardReloadQueued = true;
+    return boardLoading;
+  }
+  boardLoading = doLoadBoard().finally(() => {
+    boardLoading = null;
+    if (boardReloadQueued) {
+      boardReloadQueued = false;
+      loadBoard();
+    }
+  });
+  return boardLoading;
+}
+
+async function doLoadBoard() {
+  const epoch = changeEpoch;
   try {
     const data = await api('/api/board');
+    if (epoch !== changeEpoch) {
+      boardReloadQueued = true; // something changed mid-flight; fetch again
+      return;
+    }
+    if (dragId) {
+      syncSoon(); // don't re-render under a drag in progress; try again shortly
+      return;
+    }
     state.settings = data.settings;
     state.projects = data.projects;
     state.activities = data.activities;
