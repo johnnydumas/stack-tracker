@@ -52,18 +52,10 @@ npx wrangler d1 create stack-db
 This prints a `database_id`. Copy it into `wrangler.toml`, replacing
 `REPLACE_WITH_YOUR_D1_DATABASE_ID`.
 
-Then run the schema migration:
-
-```bash
-npm run db:migrate:remote
-```
-
-> **Heads-up:** `schema.sql` drops and recreates every table, so running it on an
-> existing database **wipes all data**. That's intended for the move from the old
-> task list to the board; don't re-run it afterwards unless you want a clean slate.
-
-(`npm run db:migrate:local` sets up a local copy for `wrangler dev`, if you want
-to develop locally first.)
+No schema step is needed: the app keeps its data in a Durable Object that creates
+its own tables on first start (see "Where the data lives" below). The D1 database
+only needs to exist because `wrangler.toml` binds it, for the one-time copy of any
+older data.
 
 ## 4. Generate VAPID keys (for push notifications)
 
