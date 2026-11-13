@@ -1,20 +1,30 @@
 # Stack
 
-A no-frills task tracker: a PWA frontend + a Cloudflare Worker backend, with real
-push notifications. No subscriptions, runs entirely on your existing Cloudflare
-Workers plan (Workers, D1, and cron triggers are all on the free tier at this scale).
+An activity board: a PWA frontend + a Cloudflare Worker backend (D1 + a Durable
+Object for reminders), with real push notifications. Runs on your existing
+Cloudflare Workers plan.
 
 **What it does:**
-- Quick-add tasks with priority, an optional due date, and optional recurrence
-- "Today" view that auto-picks what you should be working on (no manual sorting)
-- Escalating push notifications for overdue tasks, a heads-up for tasks due soon
-- A daily morning planning nudge and a weekly "stale task" digest
-- Installable as an app on your phone's home screen, works offline for viewing
-- Single shared passcode — this is built for one person (you), not multi-user
-
-It was built and tested locally end-to-end (task CRUD, recurrence, auth, static
-asset serving) before being handed to you. You still need to do the one-time
-Cloudflare setup below since it requires your account.
+- A sticky-note board: **Not started → In progress → Waiting for Update → Completed**.
+  Drag notes between columns on desktop, or use each note's **Move ▸** button (handy on phones).
+- **Projects** are optional colour-coded tags (one per activity). The dropdown in the
+  top-left filters the board to one project, "No project", or everything.
+- Every activity has a **work log**: timestamped notes you can edit or delete, plus
+  automatic entries when it changes column or due date.
+- **Per-column sort and filter** (priority, due date, time in column, manual drag order…),
+  remembered on each device. Search covers titles, descriptions, notes *and* the archive.
+- Completed activities stay on the board for **14 days**, then move to the **Archive**
+  (searchable, with restore).
+- **Recurring activities** (daily, weekdays, weekly, every 2 weeks, monthly): completing one
+  sends the same card back to Not started with its next due date.
+- **Reminders** (phone push + the in-app bell), all in your time zone (default America/Chicago):
+  - Optional reminders before the due date, set per activity (at due time, 15 min, 1 hour,
+    1 day, 1 week, or custom).
+  - Overdue: once every 24 hours starting 24h after the due time, never on weekends —
+    a reminder that would land on Saturday/Sunday goes out Monday at the same time.
+  - Waiting for Update: a nudge after 3 work days in that column, then every 3 work days.
+    Notes in that column show how many work days they've been waiting.
+- Installable as an app (PWA). Single shared passcode — built for one person.
 
 ---
 
@@ -47,6 +57,10 @@ Then run the schema migration:
 ```bash
 npm run db:migrate:remote
 ```
+
+> **Heads-up:** `schema.sql` drops and recreates every table, so running it on an
+> existing database **wipes all data**. That's intended for the move from the old
+> task list to the board; don't re-run it afterwards unless you want a clean slate.
 
 (`npm run db:migrate:local` sets up a local copy for `wrangler dev`, if you want
 to develop locally first.)
@@ -90,14 +104,18 @@ HTTPS URL — push subscriptions don't work over `wrangler dev`'s local HTTP).
 On iOS Safari or Android Chrome, open the URL and use "Add to Home Screen." It'll
 launch full-screen like a native app from then on.
 
-### Timezone note
+### How reminders are scheduled
 
-The cron schedules in `wrangler.toml` are in UTC:
-- `*/15 * * * *` — reminder sweep, every 15 minutes
-- `0 8 * * *` — morning planning prompt, 8am UTC
-- `0 9 * * 1` — weekly stale digest, Monday 9am UTC
+There are no cron jobs. A single Durable Object (`ReminderScheduler` in
+`worker/src/scheduler.js`) keeps one alarm set for the next reminder due across all
+activities. Whenever an activity is created, edited, moved or deleted, the Worker asks
+it to re-plan; when the alarm fires it sends everything that's due (push + in-app
+inbox) and sets the next alarm. The first `npm run deploy` creates the Durable Object
+automatically (the `[[migrations]]` block in `wrangler.toml`) and removes the old cron
+triggers.
 
-Adjust the hours to match your local time relative to UTC, then redeploy.
+The time zone lives in the app under **⋮ → Settings** (default `America/Chicago`).
+Due times, weekends and the 24-hour cadence all follow it, including daylight saving.
 
 ---
 
@@ -133,36 +151,29 @@ Claude Code to set this up once the repo exists — it's a ~15 line YAML file.
 
 ## 8. Working on it with Claude Code
 
-The project is deliberately split into small, single-purpose files so changes
-stay scoped:
+The project is split into small, single-purpose files:
 
 ```
 worker/src/
   index.js      → HTTP routes (Hono)
-  db.js         → all D1 queries
+  db.js         → all D1 queries, status moves, recurrence roll-over
+  scheduler.js  → Durable Object: reminder alarms (pre-due, overdue, waiting)
   push.js       → sends web push notifications
-  scheduled.js  → cron job logic (reminders, prompts, digest)
-  util.js       → sorting, recurrence math, id generation
+  util.js       → labels, formatting, id generation
 public/
   index.html    → app shell + passcode gate
   app.js        → all frontend logic (no build step, no framework)
-  style.css     → design tokens + styles
+  shared/time.js→ time-zone/weekend math, shared by the Worker and the browser
+  style.css     → design tokens + styles (desktop board, mobile swipe tabs)
   sw.js         → service worker (push handling, offline cache)
   manifest.json → PWA install metadata
 ```
-
-Some natural next things to ask Claude Code for, in rough order of usefulness:
-- Task editing (currently you can complete/delete but not edit title/notes/due date after creation)
-- Subtasks or checklists
-- A "snooze" button with a visible snooze count, per the earlier discussion of flagging repeatedly-deferred tasks
-- Swipe-to-delete on mobile instead of a tap target
-- Self-hosting the Google Fonts instead of loading them from a CDN, for full offline support
-- Tags/projects if task volume grows past what flat priority sorting can handle
 
 ## Local development
 
 ```bash
 npm run db:migrate:local
+echo "APP_PASSCODE=1234" > .dev.vars
 npx wrangler dev
 ```
 

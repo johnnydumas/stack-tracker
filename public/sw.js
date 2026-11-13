@@ -1,5 +1,5 @@
-const CACHE_NAME = 'stack-shell-v1';
-const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
+const CACHE_NAME = 'stack-shell-v2';
+const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/shared/time.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -15,7 +15,8 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Network-first for API calls, cache-first for the app shell.
+// API calls always go to the network. The app shell is served from cache
+// for speed and refreshed in the background (stale-while-revalidate).
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
@@ -38,7 +39,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'Stack', body: 'You have a task update.' };
+  let payload = { title: 'Stack', body: 'You have an activity update.' };
   try {
     payload = { ...payload, ...event.data.json() };
   } catch {
@@ -51,7 +52,7 @@ self.addEventListener('push', (event) => {
       tag: payload.tag || 'stack-notification',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { taskId: payload.taskId || null },
+      data: { activityId: payload.activityId || null },
       renotify: true,
     })
   );
@@ -59,12 +60,18 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const activityId = event.notification.data?.activityId;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          if (activityId) client.postMessage({ type: 'open-activity', activityId });
+          return client.focus();
+        }
       }
-      if (self.clients.openWindow) return self.clients.openWindow('/');
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(activityId ? `/?activity=${encodeURIComponent(activityId)}` : '/');
+      }
     })
   );
 });

@@ -2,76 +2,37 @@ export function newId() {
   return crypto.randomUUID();
 }
 
-export const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+export const STATUS_LABELS = {
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  waiting: 'Waiting for Update',
+  completed: 'Completed',
+};
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/** Completed activities drop off the board into the archive after this long. */
+export const ARCHIVE_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
 
-/**
- * Sort comparator used everywhere a task list is returned.
- * Overdue tasks float to the top, then by due date, then by priority.
- */
-export function compareTasks(a, b, now) {
-  const aOverdue = a.due_at != null && a.due_at < now;
-  const bOverdue = b.due_at != null && b.due_at < now;
-  if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-
-  const aDue = a.due_at ?? Infinity;
-  const bDue = b.due_at ?? Infinity;
-  if (aDue !== bDue) return aDue - bDue;
-
-  return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+/** "Thu, Nov 20, 9:00 AM" in the given zone. */
+export function formatLocal(ts, tz) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(ts));
 }
 
-/**
- * The "Today" view: overdue tasks, tasks due within 24h, and high-priority
- * tasks with no due date, capped so it never turns into the full list.
- * If nothing qualifies, falls back to the top of the full sorted list so
- * there's always something to point at.
- */
-export function pickTodayTasks(openTasks, now, limit = 7) {
-  const sorted = [...openTasks].sort((a, b) => compareTasks(a, b, now));
-  const qualifies = (t) =>
-    (t.due_at != null && t.due_at < now + DAY_MS) ||
-    (t.due_at == null && t.priority === 'high');
-
-  const primary = sorted.filter(qualifies).slice(0, limit);
-  if (primary.length > 0) return primary;
-  return sorted.slice(0, Math.min(3, sorted.length));
+/** 1440 -> "1 day", 60 -> "1 hour", 15 -> "15 minutes", 0 -> "now". */
+export function formatOffset(minutes) {
+  if (minutes === 0) return 'now';
+  const plural = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (minutes % 10080 === 0) return plural(minutes / 10080, 'week');
+  if (minutes % 1440 === 0) return plural(minutes / 1440, 'day');
+  if (minutes % 60 === 0) return plural(minutes / 60, 'hour');
+  return plural(minutes, 'minute');
 }
 
-export function pickStaleTasks(openTasks, now, staleAfterMs = 7 * DAY_MS) {
-  return openTasks
-    .filter((t) => now - t.last_touched_at >= staleAfterMs)
-    .sort((a, b) => a.last_touched_at - b.last_touched_at);
-}
-
-/**
- * Given a recurrence rule and the timestamp a task was completed from,
- * compute the next due_at. Returns null if the rule is missing/invalid.
- * Rule shapes: {type:'daily'} | {type:'weekly'} | {type:'every_n_days', n}
- */
-export function nextDueAt(recurrence, fromTs) {
-  if (!recurrence) return null;
-  let rule;
-  try {
-    rule = typeof recurrence === 'string' ? JSON.parse(recurrence) : recurrence;
-  } catch {
-    return null;
-  }
-  const base = new Date(fromTs);
-  switch (rule?.type) {
-    case 'daily':
-      base.setUTCDate(base.getUTCDate() + 1);
-      return base.getTime();
-    case 'weekly':
-      base.setUTCDate(base.getUTCDate() + 7);
-      return base.getTime();
-    case 'every_n_days': {
-      const n = Number.isFinite(rule.n) && rule.n > 0 ? rule.n : 1;
-      base.setUTCDate(base.getUTCDate() + n);
-      return base.getTime();
-    }
-    default:
-      return null;
-  }
-}
+/** Thrown for bad user input; the API turns it into a 400. */
+export class ValidationError extends Error {}
