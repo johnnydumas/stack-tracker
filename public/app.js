@@ -227,16 +227,37 @@ const getPasscode = () => {
   }
 };
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+class TimeoutError extends Error {}
+
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    cache: 'no-store',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getPasscode()}`,
-      ...(options.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(path, {
+      cache: 'no-store',
+      signal: controller.signal,
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getPasscode()}`,
+        ...(options.headers || {}),
+      },
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new TimeoutError('The server is taking too long to respond');
+    }
+    throw new Error('Can’t reach the server — check your connection');
+  } finally {
+    clearTimeout(timer);
+  }
+  return handleResponse(res);
+}
+
+async function handleResponse(res) {
   if (res.status === 401) {
     lock();
     throw new Error('unauthorized');
@@ -255,6 +276,11 @@ async function write(path, options) {
   if (affectsBoard) changeEpoch += 1;
   try {
     return await api(path, options);
+  } catch (err) {
+    if (err instanceof TimeoutError) {
+      throw new Error('The server didn’t answer in time — your change may not have saved. Refreshing the board');
+    }
+    throw err;
   } finally {
     if (affectsBoard) noteChange();
   }
@@ -370,10 +396,15 @@ async function loadBoard() {
   return boardLoading;
 }
 
+let boardLoadedOnce = false;
+let boardRetryTimer;
+
 async function doLoadBoard() {
   const epoch = changeEpoch;
+  clearTimeout(boardRetryTimer);
   try {
     const data = await api('/api/board');
+    setConnectionNotice(null);
     if (epoch !== changeEpoch) {
       boardReloadQueued = true; // something changed mid-flight; fetch again
       return;
@@ -390,9 +421,25 @@ async function doLoadBoard() {
       state.prefs.project = 'all';
       savePrefs();
     }
+    boardLoadedOnce = true;
     render();
   } catch (err) {
-    reportError(err);
+    if (err.message === 'unauthorized') return;
+    // Keep showing what we have, tell the user, and try again shortly.
+    setConnectionNotice(`${err.message}. Retrying…`);
+    boardRetryTimer = setTimeout(() => loadBoard(), boardLoadedOnce ? 10000 : 3000);
+  }
+}
+
+/** A persistent banner for connection trouble (null hides it). */
+function setConnectionNotice(text) {
+  const el = $('#connection-banner');
+  if (!el) return;
+  el.hidden = !text;
+  el.textContent = text || '';
+  if (!boardLoadedOnce && text) {
+    const loading = $('.board-loading');
+    if (loading) loading.textContent = text;
   }
 }
 

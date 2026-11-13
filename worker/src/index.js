@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import {
   getSettings, setSetting, isValidTimezone,
-  listProjects, createProject, updateProject, deleteProject,
-  listBoardActivities, listArchived, searchActivities, getActivityDetail,
+  createProject, updateProject, deleteProject,
+  loadBoardData, listArchived, searchActivities, getActivityDetail,
   createActivity, updateActivity, deleteActivity, restoreActivity,
   addNote, editNote, deleteNote, setReminders,
   listNotifications, unreadCount, markNotificationRead, markAllNotificationsRead,
@@ -23,13 +23,56 @@ app.use('/api/*', async (c, next) => {
   c.header('Cache-Control', 'no-store');
 });
 
-// Log slow requests so `wrangler tail` / Workers Logs show where time goes.
+// Log slow requests with a breakdown of time spent waiting on the database,
+// so `wrangler tail` / Workers Logs show exactly where time goes.
 app.use('/api/*', async (c, next) => {
   const started = Date.now();
+  const timing = { dbMs: 0, calls: 0, slowestMs: 0, slowestSql: '' };
+  c.env = { ...c.env, DB: instrumentDb(c.env.DB, timing) };
   await next();
   const ms = Date.now() - started;
-  if (ms > 500) console.warn(`slow request: ${c.req.method} ${c.req.path} took ${ms}ms`);
+  c.header('Server-Timing', `db;dur=${timing.dbMs}, total;dur=${ms}`);
+  if (ms > 500) {
+    console.warn(
+      `slow request: ${c.req.method} ${c.req.path} took ${ms}ms — database: ${timing.calls} call(s), ` +
+      `${timing.dbMs}ms total, slowest ${timing.slowestMs}ms (${timing.slowestSql}); ` +
+      `other: ${ms - timing.dbMs}ms; colo ${c.req.raw.cf?.colo || '?'}`
+    );
+  }
 });
+
+/** Wraps a D1 binding so every call's wall time is added to `timing`. */
+function instrumentDb(db, timing) {
+  const track = async (label, fn) => {
+    const t = Date.now();
+    try {
+      return await fn();
+    } finally {
+      const d = Date.now() - t;
+      timing.dbMs += d;
+      timing.calls += 1;
+      if (d >= timing.slowestMs) {
+        timing.slowestMs = d;
+        timing.slowestSql = label.replace(/\s+/g, ' ').trim().slice(0, 60);
+      }
+    }
+  };
+  const wrapStmt = (stmt, sql) => ({
+    _stmt: stmt,
+    _sql: sql.replace(/\s+/g, ' ').trim().slice(0, 25),
+    bind: (...args) => wrapStmt(stmt.bind(...args), sql),
+    first: (...a) => track(sql, () => stmt.first(...a)),
+    all: () => track(sql, () => stmt.all()),
+    run: () => track(sql, () => stmt.run()),
+    raw: (...a) => track(sql, () => stmt.raw(...a)),
+  });
+  return {
+    prepare: (sql) => wrapStmt(db.prepare(sql), sql),
+    batch: (stmts) => track(`batch of ${stmts.length}: ${stmts.map((x) => x._sql || '').join('; ')}`,
+      () => db.batch(stmts.map((x) => x._stmt || x))),
+    exec: (sql) => track(sql, () => db.exec(sql)),
+  };
+}
 
 // ---- Auth: every /api/* route except the passcode check needs `Authorization: Bearer <passcode>` ----
 
@@ -82,9 +125,7 @@ app.post('/api/auth/verify', async (c) => {
 
 app.get('/api/board', async (c) => {
   const now = Date.now();
-  const [settings, projects, activities, unread] = await Promise.all([
-    getSettings(c.env), listProjects(c.env), listBoardActivities(c.env, now), unreadCount(c.env),
-  ]);
+  const { settings, projects, activities, unread } = await loadBoardData(c.env, now);
   reschedule(c); // cheap safety net: makes sure the alarm is always armed
   return c.json({ settings, projects, activities, unread, now });
 });

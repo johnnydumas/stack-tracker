@@ -84,6 +84,27 @@ export async function listBoardActivities(env, now) {
   return results;
 }
 
+/**
+ * Everything the board needs, in a single round trip to the database
+ * (one batch instead of four separate queries).
+ */
+export async function loadBoardData(env, now) {
+  const [settingsRows, projects, activities, unread] = await env.DB.batch([
+    env.DB.prepare(`SELECT key, value FROM settings`),
+    env.DB.prepare(`SELECT * FROM projects ORDER BY name COLLATE NOCASE`),
+    env.DB.prepare(`${ACTIVITY_SELECT} WHERE ${NOT_ARCHIVED}`).bind(now - ARCHIVE_AFTER_MS),
+    env.DB.prepare(`SELECT COUNT(*) AS c FROM notifications WHERE read_at IS NULL`),
+  ]);
+  const settings = { timezone: 'America/Chicago' };
+  for (const row of settingsRows.results) settings[row.key] = row.value;
+  return {
+    settings,
+    projects: projects.results,
+    activities: activities.results,
+    unread: unread.results[0]?.c ?? 0,
+  };
+}
+
 /** Archived activities, optionally filtered by a search string (title, description, notes). */
 export async function listArchived(env, now, q = '') {
   const cutoff = now - ARCHIVE_AFTER_MS;

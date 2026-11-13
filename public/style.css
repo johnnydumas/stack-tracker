@@ -263,6 +263,22 @@ select { color-scheme: dark; }
   border-bottom: 1px solid var(--border);
 }
 
+.connection-banner {
+  padding: 8px 16px;
+  font-size: 13px;
+  background: rgba(226, 87, 76, 0.14);
+  border-bottom: 1px solid rgba(226, 87, 76, 0.4);
+  color: #f3a59d;
+}
+
+.board-loading {
+  grid-column: 1 / -1;
+  align-self: start;
+  justify-self: center;
+  margin-top: 48px;
+  color: var(--text-muted);
+}
+
 /* ---------------- Board ---------------- */
 
 .col-tabs { display: none; }

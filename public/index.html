@@ -59,7 +59,9 @@
     <!-- Mobile only: one column at a time, swipe or tap a tab -->
     <nav class="col-tabs" id="col-tabs" aria-label="Columns"></nav>
 
-    <main class="board" id="board"></main>
+    <div class="connection-banner" id="connection-banner" role="status" hidden></div>
+
+    <main class="board" id="board"><div class="board-loading">Loading your board…</div></main>
   </div>
 
   <!-- Popover menus (positioned by JS) -->
