@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stack-shell-v2';
+const CACHE_NAME = 'stack-shell-v3';
 const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/shared/time.js', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

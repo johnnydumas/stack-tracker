@@ -438,6 +438,9 @@ function renderBoard() {
   const now = Date.now();
   const scrollTops = {};
   for (const body of board.querySelectorAll('.column-body')) scrollTops[body.dataset.status] = body.scrollTop;
+  // Keep whatever is being typed in quick-add through auto-refreshes.
+  const qa = board.querySelector('.quick-add input');
+  const qaDraft = qa ? { value: qa.value, focused: document.activeElement === qa, start: qa.selectionStart, end: qa.selectionEnd } : null;
 
   board.innerHTML = STATUSES.map((s) => {
     const items = columnItems(s.id, now);
@@ -456,8 +459,8 @@ function renderBoard() {
         </header>
         ${s.id === 'not_started' ? `
           <form class="quick-add" data-action="quick-add">
-            <input type="text" name="title" placeholder="Add an activity…" maxlength="200" autocomplete="off" aria-label="New activity title" />
-            <button type="submit" aria-label="Add">+</button>
+            <input type="text" name="title" placeholder="Quick add: type a title, press Enter" maxlength="200" autocomplete="off" aria-label="New activity title" />
+            <button type="submit" aria-label="Add activity" title="Add (empty opens the full form)">+</button>
           </form>` : ''}
         <div class="column-body" data-status="${s.id}">
           ${items.length ? items.map((a) => renderNote(a, now)).join('') : renderEmpty(s.id, total)}
@@ -467,6 +470,14 @@ function renderBoard() {
 
   for (const body of board.querySelectorAll('.column-body')) {
     if (scrollTops[body.dataset.status]) body.scrollTop = scrollTops[body.dataset.status];
+  }
+  const qaNew = board.querySelector('.quick-add input');
+  if (qaNew && qaDraft) {
+    qaNew.value = qaDraft.value;
+    if (qaDraft.focused) {
+      qaNew.focus({ preventScroll: true });
+      qaNew.setSelectionRange(qaDraft.start, qaDraft.end);
+    }
   }
 
   colTabs.innerHTML = STATUSES.map((s, i) => {
@@ -479,7 +490,7 @@ function renderBoard() {
 function renderEmpty(status, total) {
   if (total > 0 || state.searchIds) return `<div class="empty">Nothing matches the current filters.</div>`;
   const text = {
-    not_started: 'Nothing queued. Add an activity above.',
+    not_started: 'Nothing queued. Type a title above, or press + for the full form.',
     in_progress: 'Drag something here when you start it.',
     waiting: 'Things blocked on someone else go here.',
     completed: 'Finished work shows here for 14 days, then moves to the archive.',
@@ -553,16 +564,26 @@ board.addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = e.target.elements.title;
   const title = input.value.trim();
-  if (!title) return;
+  if (!title) {
+    openCreate(); // empty quick-add: open the full form instead
+    return;
+  }
   const projectId = state.prefs.project !== 'all' && state.prefs.project !== 'none' ? state.prefs.project : null;
+  const button = e.target.querySelector('button');
+  button.disabled = true;
   try {
     const { activity } = await post('/api/activities', { title, project_id: projectId });
     upsertActivity(activity);
     input.value = '';
     renderBoard();
     $('.column[data-status="not_started"] .quick-add input')?.focus();
+    if (!columnItems('not_started').some((a) => a.id === activity.id)) {
+      toast('Added — but hidden by the current search or column filter');
+    }
   } catch (err) {
     reportError(err);
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -942,12 +963,15 @@ function blankActivity() {
   };
 }
 
-$('#new-btn').addEventListener('click', () => {
+$('#new-btn').addEventListener('click', () => openCreate());
+
+function openCreate() {
+  closePopover();
   detailState = { mode: 'create', activity: blankActivity(), notes: [], reminders: [], draftReminders: [] };
   renderDetail();
   detail.showModal();
   $('#d-title', detail)?.focus();
-});
+}
 
 async function openDetail(id) {
   closePopover();
