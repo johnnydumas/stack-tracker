@@ -1,5 +1,6 @@
-const CACHE_NAME = 'stack-shell-v3';
+const CACHE_NAME = 'stack-shell-v4';
 const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/shared/time.js', '/manifest.json'];
+const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -15,28 +16,33 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// API calls always go to the network. The app shell is served from cache
-// for speed and refreshed in the background (stale-while-revalidate).
+// App files: network first, so a new deploy is picked up immediately and old
+// and new files never get mixed. The cache is only a fallback when offline
+// or when the network is very slow. API calls are never cached.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
+  if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
-  );
+  event.respondWith(networkFirst(event.request));
 });
+
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const network = fetch(request).then((res) => {
+    if (res.ok) cache.put(request, res.clone());
+    return res;
+  });
+  const timeout = new Promise((resolve) => setTimeout(resolve, NETWORK_TIMEOUT_MS));
+  try {
+    const res = await Promise.race([network, timeout]);
+    if (res) return res;
+  } catch {
+    // offline — fall through to cache
+  }
+  const cached = await cache.match(request, { ignoreSearch: request.mode === 'navigate' });
+  return cached || network;
+}
 
 self.addEventListener('push', (event) => {
   let payload = { title: 'Stack', body: 'You have an activity update.' };

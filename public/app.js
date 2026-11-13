@@ -157,8 +157,15 @@ for (const dlg of document.querySelectorAll('dialog.sheet')) {
 // Formatting
 // =====================================================================
 
+const fmtCache = new Map();
 function fmt(ts, opts) {
-  return new Intl.DateTimeFormat('en-US', { timeZone: tz(), ...opts }).format(new Date(ts));
+  const key = `${tz()}|${JSON.stringify(opts)}`;
+  let f = fmtCache.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', { timeZone: tz(), ...opts });
+    fmtCache.set(key, f);
+  }
+  return f.format(new Date(ts));
 }
 
 const fmtDateTime = (ts) => fmt(ts, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -975,26 +982,103 @@ function openCreate() {
 
 async function openDetail(id) {
   closePopover();
-  try {
-    const data = await api(`/api/activities/${id}`);
-    detailState = { mode: 'edit', ...data };
+  const cached = state.activities.find((a) => a.id === id);
+  if (cached) {
+    // Open immediately with what the board already knows; notes and reminders follow.
+    detailState = { mode: 'edit', activity: { ...cached }, notes: null, reminders: null };
     renderDetail();
     if (!detail.open) detail.showModal();
+  }
+  await loadDetail(id, !cached);
+}
+
+async function loadDetail(id, fullRender) {
+  try {
+    const data = await api(`/api/activities/${id}`);
+    if (!fullRender && detailState?.activity.id !== id) return; // closed or switched meanwhile
+    if (fullRender || !detail.open) {
+      detailState = { mode: 'edit', ...data };
+      renderDetail();
+      if (!detail.open) detail.showModal();
+      return;
+    }
+    detailState.notes = data.notes;
+    detailState.reminders = data.reminders;
+    detailState.loadError = null;
+    refreshDetailSections();
   } catch (err) {
-    reportError(err);
+    if (fullRender || !detailState || detailState.activity.id !== id) {
+      reportError(err);
+      return;
+    }
+    detailState.loadError = err.message || 'network error';
+    refreshDetailSections();
   }
 }
 
+/** Reminder chips. While the activity's details are still loading, a placeholder. */
+function remindersSectionHTML(hasDue) {
+  const loading = detailState.mode === 'edit' && detailState.reminders == null;
+  const offsets = currentOffsets();
+  const customOffsets = offsets.filter((m) => !REMINDER_PRESETS.some((p) => p.minutes === m));
+  return `
+        <h3>Reminders before due</h3>
+        ${hasDue ? '' : '<p class="hint">Set a due date to use these.</p>'}
+        ${loading ? '<p class="hint">Loading…</p>' : `
+        <div class="reminder-chips">
+          ${REMINDER_PRESETS.map((p) => `
+            <button type="button" class="toggle-chip" data-action="toggle-reminder" data-minutes="${p.minutes}"
+              aria-pressed="${offsets.includes(p.minutes)}">${esc(p.label)}</button>`).join('')}
+          ${customOffsets.map((m) => `
+            <button type="button" class="toggle-chip" data-action="toggle-reminder" data-minutes="${m}" aria-pressed="true"
+              title="Remove">${esc(formatOffset(m))} ✕</button>`).join('')}
+        </div>
+        <div class="custom-reminder">
+          <input type="number" id="d-rem-n" min="1" max="999" value="2" aria-label="Custom reminder amount" />
+          <select id="d-rem-unit" aria-label="Custom reminder unit">
+            <option value="1">minutes</option>
+            <option value="60" selected>hours</option>
+            <option value="1440">days</option>
+          </select>
+          <span class="muted">before</span>
+          <button type="button" class="btn-ghost btn-small" data-action="add-reminder">Add</button>
+        </div>`}`;
+}
+
+function currentOffsets() {
+  if (detailState.mode === 'create') return [...detailState.draftReminders];
+  return (detailState.reminders || []).map((r) => r.offset_minutes);
+}
+
+function logHTML() {
+  if (detailState.loadError) {
+    return `<li class="hint">Couldn’t load the work log (${esc(detailState.loadError)}).
+      <button type="button" class="link-btn" data-action="retry-load">Try again</button></li>`;
+  }
+  if (detailState.notes == null) return '<li class="hint">Loading…</li>';
+  return detailState.notes.map(renderLogEntry).join('') || '<li class="hint">No entries yet.</li>';
+}
+
+function hasDueInForm() {
+  return Boolean($('#d-due-date', detail)?.value);
+}
+
+/** Fills in the reminders and work log once they arrive, without touching fields being edited. */
+function refreshDetailSections() {
+  const rem = $('#d-reminders', detail);
+  if (rem) rem.innerHTML = remindersSectionHTML(hasDueInForm());
+  const log = $('#d-log', detail);
+  if (log) log.innerHTML = logHTML();
+}
+
 function renderDetail() {
-  const { mode, activity: a, notes } = detailState;
+  const { mode, activity: a } = detailState;
   const creating = mode === 'create';
   // In create mode the due date only exists as the draft input string.
   const due = creating
     ? (a.dueInput ? { date: a.dueInput.slice(0, 10), time: a.dueInput.slice(11, 16) } : { date: '', time: '' })
     : (a.due_at != null ? toLocalInput(a.due_at, tz()) : { date: '', time: '' });
   const hasDue = Boolean(due.date);
-  const offsets = creating ? detailState.draftReminders : detailState.reminders.map((r) => r.offset_minutes);
-  const customOffsets = offsets.filter((m) => !REMINDER_PRESETS.some((p) => p.minutes === m));
   const archived = a.status === 'completed' && a.completed_at && Date.now() - a.completed_at > 14 * 86400000;
 
   detail.innerHTML = `
@@ -1029,7 +1113,7 @@ function renderDetail() {
         <div class="field field-wide">
           <span class="field-label">Due <span class="muted">(${esc(shortZone())})</span></span>
           <div class="due-row">
-            <input type="date" id="d-due-date" value="${due.date}" aria-label="Due date" />
+            <input type="date" id="d-due-date" value="${due.date}" min="2000-01-01" max="2100-12-31" aria-label="Due date" />
             <input type="time" id="d-due-time" value="${due.date ? due.time : ''}" aria-label="Due time" placeholder="09:00" />
             <button type="button" class="link-btn" data-action="clear-due" ${hasDue ? '' : 'hidden'}>Clear</button>
           </div>
@@ -1045,28 +1129,7 @@ function renderDetail() {
         </label>
       </div>
 
-      <section class="detail-section">
-        <h3>Reminders before due</h3>
-        ${hasDue ? '' : '<p class="hint">Set a due date to use these.</p>'}
-        <div class="reminder-chips">
-          ${REMINDER_PRESETS.map((p) => `
-            <button type="button" class="toggle-chip" data-action="toggle-reminder" data-minutes="${p.minutes}"
-              aria-pressed="${offsets.includes(p.minutes)}">${esc(p.label)}</button>`).join('')}
-          ${customOffsets.map((m) => `
-            <button type="button" class="toggle-chip" data-action="toggle-reminder" data-minutes="${m}" aria-pressed="true"
-              title="Remove">${esc(formatOffset(m))} ✕</button>`).join('')}
-        </div>
-        <div class="custom-reminder">
-          <input type="number" id="d-rem-n" min="1" max="999" value="2" aria-label="Custom reminder amount" />
-          <select id="d-rem-unit" aria-label="Custom reminder unit">
-            <option value="1">minutes</option>
-            <option value="60" selected>hours</option>
-            <option value="1440">days</option>
-          </select>
-          <span class="muted">before</span>
-          <button type="button" class="btn-ghost btn-small" data-action="add-reminder">Add</button>
-        </div>
-      </section>
+      <section class="detail-section" id="d-reminders">${remindersSectionHTML(hasDue)}</section>
 
       <label class="detail-section">
         <h3>Description</h3>
@@ -1084,9 +1147,7 @@ function renderDetail() {
             <textarea id="d-new-note" rows="2" maxlength="5000" placeholder="What happened? (Ctrl/⌘+Enter to add)"></textarea>
             <button type="button" class="btn-primary btn-small" data-action="add-note">Add note</button>
           </div>
-          <ol class="log">
-            ${notes.map(renderLogEntry).join('') || '<li class="hint">No entries yet.</li>'}
-          </ol>
+          <ol class="log" id="d-log">${logHTML()}</ol>
         </section>
         <footer class="detail-footer">
           <span class="muted small">Created ${esc(fmtDateTime(a.created_at))}</span>
@@ -1167,18 +1228,27 @@ async function saveField(body) {
 async function saveReminders(offsets) {
   if (detailState.mode === 'create') {
     detailState.draftReminders = offsets;
-    renderDetail();
+    refreshDetailSections();
     return;
   }
+  // Show the change right away; the server's answer replaces it.
+  const id = detailState.activity.id;
+  detailState.reminders = offsets.map((m) => ({ offset_minutes: m }));
+  refreshDetailSections();
   try {
-    const { reminders } = await put(`/api/activities/${detailState.activity.id}/reminders`, { offsets });
+    const { reminders } = await put(`/api/activities/${id}/reminders`, { offsets });
+    if (detailState?.activity.id !== id) return;
+    // Ignore a stale response if more chips were toggled while it was in flight.
+    const latest = currentOffsets().sort().join();
+    if (latest !== reminders.map((r) => r.offset_minutes).sort().join()) return;
     detailState.reminders = reminders;
     const a = state.activities.find((x) => x.id === detailState.activity.id);
     if (a) a.reminders_count = reminders.length;
-    renderDetail();
+    refreshDetailSections();
     renderBoard();
   } catch (err) {
     reportError(err);
+    if (detailState?.activity.id === id) loadDetail(id, false); // re-sync with the server
   }
 }
 
@@ -1262,9 +1332,8 @@ detail.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-action]');
   if (!el || !detailState) return;
   const { activity } = detailState;
-  const offsets = detailState.mode === 'create'
-    ? [...detailState.draftReminders]
-    : detailState.reminders.map((r) => r.offset_minutes);
+  if (detailState.mode === 'edit' && detailState.reminders == null && el.dataset.action.includes('reminder')) return;
+  const offsets = currentOffsets();
 
   switch (el.dataset.action) {
     case 'close':
@@ -1294,6 +1363,11 @@ detail.addEventListener('click', async (e) => {
     case 'add-note':
       addNoteFromCompose();
       break;
+    case 'retry-load':
+      detailState.loadError = null;
+      refreshDetailSections();
+      loadDetail(activity.id, false);
+      break;
     case 'edit-note':
       startEditNote(el.closest('.log-entry'));
       break;
@@ -1301,7 +1375,7 @@ detail.addEventListener('click', async (e) => {
       saveEditedNote(el.closest('.log-entry'));
       break;
     case 'cancel-note':
-      renderDetail();
+      refreshDetailSections();
       break;
     case 'delete-note': {
       const id = el.closest('.log-entry').dataset.noteId;
@@ -1310,7 +1384,7 @@ detail.addEventListener('click', async (e) => {
         await del(`/api/notes/${id}`);
         detailState.notes = detailState.notes.filter((n) => n.id !== id);
         bumpNotesCount(activity.id, -1);
-        renderDetail();
+        refreshDetailSections();
       } catch (err) {
         reportError(err);
       }
@@ -1357,12 +1431,17 @@ async function addNoteFromCompose() {
   const box = $('#d-new-note', detail);
   const text = box.value.trim();
   if (!text) return;
+  if (detailState.notes == null) {
+    toast('Still loading — try again in a moment');
+    return;
+  }
   try {
     const { note } = await post(`/api/activities/${detailState.activity.id}/notes`, { body: text });
     detailState.notes.unshift(note);
     bumpNotesCount(detailState.activity.id, 1);
-    renderDetail();
-    $('#d-new-note', detail)?.focus();
+    box.value = '';
+    refreshDetailSections();
+    box.focus();
   } catch (err) {
     reportError(err);
   }
@@ -1390,7 +1469,7 @@ async function saveEditedNote(li) {
     const { note } = await patch(`/api/notes/${li.dataset.noteId}`, { body: text });
     const i = detailState.notes.findIndex((n) => n.id === note.id);
     if (i >= 0) detailState.notes[i] = note;
-    renderDetail();
+    refreshDetailSections();
   } catch (err) {
     reportError(err);
   }
@@ -1780,7 +1859,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-(async function boot() {
-  const saved = getPasscode();
-  if (saved && (await verifyPasscode(saved).catch(() => false))) showApp();
-})();
+// With a saved passcode, go straight to loading the board (one request
+// instead of two); a wrong/old passcode gets a 401 there and shows the gate.
+if (getPasscode()) showApp();

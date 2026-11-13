@@ -16,6 +16,14 @@ export { ReminderScheduler };
 
 const app = new Hono();
 
+// Log slow requests so `wrangler tail` / Workers Logs show where time goes.
+app.use('/api/*', async (c, next) => {
+  const started = Date.now();
+  await next();
+  const ms = Date.now() - started;
+  if (ms > 500) console.warn(`slow request: ${c.req.method} ${c.req.path} took ${ms}ms`);
+});
+
 // ---- Auth: every /api/* route except the passcode check needs `Authorization: Bearer <passcode>` ----
 
 function expectedPasscode(env) {

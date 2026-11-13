@@ -156,6 +156,7 @@ export async function createActivity(env, input, tz) {
   if (!(await projectExists(env, projectId))) throw new ValidationError('unknown project');
 
   const dueAt = input.due ? parseLocalInput(input.due, tz) : null;
+  if (input.due && dueAt == null) throw new ValidationError('invalid due date (use a year between 2000 and 2100)');
   const top = await env.DB.prepare(
     `SELECT MIN(sort_order) AS m FROM activities WHERE status = ?1`
   ).bind(status).first();
@@ -239,7 +240,7 @@ export async function updateActivity(env, id, patch, tz) {
   let dueChanged = false;
   if (patch.due !== undefined) {
     const dueAt = patch.due ? parseLocalInput(patch.due, tz) : null;
-    if (patch.due && dueAt == null) throw new ValidationError('invalid due date');
+    if (patch.due && dueAt == null) throw new ValidationError('invalid due date (use a year between 2000 and 2100)');
     if (dueAt !== existing.due_at) {
       next.due_at = dueAt;
       dueChanged = true;
