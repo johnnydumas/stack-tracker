@@ -1,8 +1,8 @@
 # Stack
 
-An activity board: a PWA frontend + a Cloudflare Worker backend (D1 + a Durable
-Object for reminders), with real push notifications. Runs on your existing
-Cloudflare Workers plan.
+An activity board: a PWA frontend + a Cloudflare Worker backend, with real push
+notifications. All data and reminder scheduling live in a single Durable Object
+with its own built-in SQLite storage. Runs on your existing Cloudflare Workers plan.
 
 **What it does:**
 - A sticky-note board: **Not started → In progress → Waiting for Update → Completed**.
@@ -104,15 +104,23 @@ HTTPS URL — push subscriptions don't work over `wrangler dev`'s local HTTP).
 On iOS Safari or Android Chrome, open the URL and use "Add to Home Screen." It'll
 launch full-screen like a native app from then on.
 
+### Where the data lives
+
+All data lives in one Durable Object (`ReminderScheduler`, `worker/src/scheduler.js`)
+using its built-in SQLite storage, which sits on the same machine as the code, so
+there's no network hop per query. The Worker (`worker/src/index.js`) just forwards
+every `/api` request to it. The object creates its own tables on first start.
+
+The D1 database (`stack-db`) is no longer used for live data. It stays bound only so
+that, on first start, the Durable Object can copy existing data out of it (once;
+it records that it's done). **Don't run `schema.sql` any more** — it only affects D1.
+
 ### How reminders are scheduled
 
-There are no cron jobs. A single Durable Object (`ReminderScheduler` in
-`worker/src/scheduler.js`) keeps one alarm set for the next reminder due across all
-activities. Whenever an activity is created, edited, moved or deleted, the Worker asks
-it to re-plan; when the alarm fires it sends everything that's due (push + in-app
-inbox) and sets the next alarm. The first `npm run deploy` creates the Durable Object
-automatically (the `[[migrations]]` block in `wrangler.toml`) and removes the old cron
-triggers.
+There are no cron jobs. The same Durable Object keeps one alarm set for the next
+reminder due across all activities, re-plans it whenever an activity is created,
+edited, moved or deleted, and when the alarm fires sends everything that's due
+(push + in-app inbox) and sets the next alarm.
 
 The time zone lives in the app under **⋮ → Settings** (default `America/Chicago`).
 Due times, weekends and the 24-hour cadence all follow it, including daylight saving.
@@ -155,9 +163,11 @@ The project is split into small, single-purpose files:
 
 ```
 worker/src/
-  index.js      → HTTP routes (Hono)
-  db.js         → all D1 queries, status moves, recurrence roll-over
-  scheduler.js  → Durable Object: reminder alarms (pre-due, overdue, waiting)
+  index.js      → Worker entry: forwards /api requests to the Durable Object
+  api.js        → HTTP routes (Hono), run inside the Durable Object
+  scheduler.js  → Durable Object: owns the data and the reminder alarms
+  store.js      → its SQLite schema, D1-style wrapper, one-time copy from D1
+  db.js         → all queries, status moves, recurrence roll-over
   push.js       → sends web push notifications
   util.js       → labels, formatting, id generation
 public/
@@ -172,7 +182,6 @@ public/
 ## Local development
 
 ```bash
-npm run db:migrate:local
 echo "APP_PASSCODE=1234" > .dev.vars
 npx wrangler dev
 ```

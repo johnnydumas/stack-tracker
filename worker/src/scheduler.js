@@ -6,22 +6,51 @@ import {
 import { sendPushToAll } from './push.js';
 import { formatLocal, formatOffset } from './util.js';
 import { nextOverdueReminder, nextWaitingNudge, workDaysBetween } from '../../public/shared/time.js';
+import { sqlStore, createSchema, migrateFromD1 } from './store.js';
+import { app } from './api.js';
 
 // A pre-due reminder whose time passed more than this long ago (e.g. the
 // alarm ran late) is skipped rather than sent stale.
 const LATE_GRACE_MS = 60 * 60 * 1000;
 
 /**
- * Single Durable Object instance that owns all reminder timing.
+ * The single Durable Object that holds all of the app's data and runs its
+ * reminders.
  *
- * It keeps exactly one alarm set for the earliest upcoming reminder across
- * every activity. The Worker calls `reschedule()` after anything that can
- * change the schedule (new/edited/moved/deleted activities, reminder edits,
- * time zone changes); the alarm handler sends what's due and re-arms.
+ * - Data lives in this object's own SQLite storage (see store.js), on the
+ *   same machine as the code, so queries don't cross the network.
+ * - Every /api request is forwarded here by the Worker and handled by the
+ *   Hono app in api.js.
+ * - One alarm is kept set for the earliest upcoming reminder across every
+ *   activity; it is re-armed after anything that changes the schedule.
  */
 export class ReminderScheduler extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.store = {
+      ...env,
+      DB: sqlStore(ctx.storage),
+      LEGACY_D1: env.DB,
+      RESCHEDULE: () => this.reschedule(),
+    };
+    ctx.blockConcurrencyWhile(async () => {
+      createSchema(ctx.storage.sql);
+      await migrateFromD1(ctx.storage, env.DB).catch((err) => console.error('D1 migration failed', err));
+      await this.reschedule();
+    });
+  }
+
+  async fetch(request) {
+    return app.fetch(request, this.store, {
+      waitUntil: (promise) => {
+        this.ctx.waitUntil(promise);
+      },
+      passThroughOnException() {},
+    });
+  }
+
   async reschedule() {
-    const next = await nextScheduledEvent(this.env);
+    const next = await nextScheduledEvent(this.store);
     if (next == null) {
       await this.ctx.storage.deleteAlarm();
       return null;
@@ -32,12 +61,8 @@ export class ReminderScheduler extends DurableObject {
     return at;
   }
 
-  async status() {
-    return { alarm: await this.ctx.storage.getAlarm() };
-  }
-
   async alarm() {
-    await runDueReminders(this.env, Date.now());
+    await runDueReminders(this.store, Date.now());
     await this.reschedule();
   }
 }

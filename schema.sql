@@ -1,5 +1,8 @@
--- Stack: activity board schema.
--- WARNING: this drops the old tables. Running it wipes all existing data.
+-- Stack: LEGACY D1 schema — no longer used for live data.
+-- The app now stores everything in its Durable Object (worker/src/store.js
+-- creates those tables automatically). Do not run this against the remote
+-- database: it drops tables and would wipe the data the Durable Object
+-- copies over on first start.
 
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS notifications;
