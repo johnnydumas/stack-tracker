@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Stack · Print week</title>
+  <meta name="theme-color" content="#14161a" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/print.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" />
+</head>
+<body>
+  <div class="toolbar" role="toolbar" aria-label="Print options">
+    <a class="tb-btn" href="/">← Board</a>
+    <label class="tb-project">
+      <span class="sr-only">Project</span>
+      <select id="project-select" aria-label="Project"></select>
+    </label>
+    <span class="tb-spacer"></span>
+    <button class="tb-btn tb-primary" id="print-btn" type="button" disabled>Print</button>
+  </div>
+
+  <div class="desk" id="desk">
+    <div class="sheet-frame" id="sheet-frame">
+      <article class="sheet" id="sheet" aria-live="polite">
+        <p class="loading">Preparing your sheet…</p>
+      </article>
+    </div>
+  </div>
+
+  <script type="module" src="/print.js"></script>
+</body>
+</html>

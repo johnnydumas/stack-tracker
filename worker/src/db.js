@@ -566,3 +566,21 @@ export async function replanAllSchedules(env, tz) {
   );
   if (statements.length > 0) await env.DB.batch(statements);
 }
+
+// ---------------- Print sheet ----------------
+
+/** Open (not completed) activities plus each one's most recent work-log note. */
+export async function loadPrintData(env) {
+  const [activities, notes] = await env.DB.batch([
+    env.DB.prepare(`SELECT * FROM activities WHERE status != 'completed'`),
+    env.DB.prepare(
+      `SELECT n.activity_id, n.body, n.created_at FROM activity_notes n
+        WHERE n.kind = 'note' AND n.created_at = (
+          SELECT MAX(created_at) FROM activity_notes m WHERE m.activity_id = n.activity_id AND m.kind = 'note'
+        )`
+    ),
+  ]);
+  const lastNotes = new Map();
+  for (const n of notes.results) lastNotes.set(n.activity_id, { body: n.body, created_at: n.created_at });
+  return { activities: activities.results, lastNotes };
+}

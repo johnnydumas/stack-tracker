@@ -1,5 +1,5 @@
-const CACHE_NAME = 'stack-shell-v4';
-const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/shared/time.js', '/manifest.json'];
+const CACHE_NAME = 'stack-shell-v5';
+const SHELL_FILES = ['/', '/index.html', '/style.css', '/app.js', '/shared/time.js', '/manifest.json', '/print.html', '/print.css', '/print.js'];
 const NETWORK_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', (event) => {

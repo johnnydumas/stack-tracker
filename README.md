@@ -24,6 +24,11 @@ with its own built-in SQLite storage. Runs on your existing Cloudflare Workers p
     a reminder that would land on Saturday/Sunday goes out Monday at the same time.
   - Waiting for Update: a nudge after 3 work days in that column, then every 3 work days.
     Notes in that column show how many work days they've been waiting.
+- **Print week** (⋮ menu): a one-page US Letter to-do sheet for a binder, covering five
+  working days from the day you print (Mon → Mon–Fri, Fri → Fri–Thu, weekend → next
+  Mon–Fri). Overdue, due this week (repeats on each weekday they fall), waiting, in
+  progress and undated items, each with a checkbox and its latest note, plus a "Top 3
+  today" box, a due-per-day strip and ruled notes. Follows the project dropdown.
 - Installable as an app (PWA). Single shared passcode — built for one person.
 
 ---
@@ -160,10 +165,12 @@ worker/src/
   scheduler.js  → Durable Object: owns the data and the reminder alarms
   store.js      → its SQLite schema, D1-style wrapper, one-time copy from D1
   db.js         → all queries, status moves, recurrence roll-over
+  print.js      → which activities make the printed sheet, and the 5-day window
   push.js       → sends web push notifications
   util.js       → labels, formatting, id generation
 public/
   index.html    → app shell + passcode gate
+  print.html/js/css → printable weekly sheet (Print week)
   app.js        → all frontend logic (no build step, no framework)
   shared/time.js→ time-zone/weekend math, shared by the Worker and the browser
   style.css     → design tokens + styles (desktop board, mobile swipe tabs)

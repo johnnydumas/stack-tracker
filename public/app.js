@@ -998,23 +998,31 @@ function openMoveMenu(anchor, id) {
 // ---- Overflow menu ----
 
 $('#menu-btn').addEventListener('click', async (e) => {
+  // Capture the button now: e.currentTarget is cleared once we await below.
+  const anchor = e.currentTarget;
+  if (popoverAnchor === anchor && !popover.hidden) {
+    closePopover();
+    return;
+  }
   const pushOn = await isPushSubscribed();
   const html = `
     <div class="menu" role="menu">
       <button class="menu-item" data-act="push"><span class="menu-label">Phone notifications</span><span class="pill" data-on="${pushOn}">${pushOn ? 'On' : 'Off'}</span></button>
       <button class="menu-item" data-act="projects"><span class="menu-label">Manage projects</span></button>
+      <button class="menu-item" data-act="print"><span class="menu-label">Print week</span></button>
       <button class="menu-item" data-act="archive"><span class="menu-label">Archive</span></button>
       <button class="menu-item" data-act="settings"><span class="menu-label">Settings</span></button>
       <div class="menu-sep"></div>
       <button class="menu-item" data-act="lock"><span class="menu-label">Lock</span></button>
     </div>`;
-  openPopover(e.currentTarget, html, (ev) => {
+  openPopover(anchor, html, (ev) => {
     if (ev.type !== 'click') return;
     const act = ev.target.closest('button')?.dataset.act;
     if (!act) return;
     closePopover();
     if (act === 'push') togglePush();
     if (act === 'projects') openProjects();
+    if (act === 'print') location.href = `/print.html?project=${encodeURIComponent(state.prefs.project)}`;
     if (act === 'archive') openArchive('');
     if (act === 'settings') openSettings();
     if (act === 'lock') lock();

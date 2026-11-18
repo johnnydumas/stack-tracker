@@ -6,10 +6,11 @@ import {
   createActivity, updateActivity, deleteActivity, restoreActivity,
   addNote, editNote, deleteNote, setReminders,
   listNotifications, unreadCount, markNotificationRead, markAllNotificationsRead,
-  saveSubscription, removeSubscription, replanAllSchedules,
+  saveSubscription, removeSubscription, replanAllSchedules, loadPrintData, listProjects,
 } from './db.js';
 import { sendPushToAll } from './push.js';
 import { ValidationError } from './util.js';
+import { buildPrintSheet } from './print.js';
 
 // The HTTP API. It runs inside the Durable Object (see scheduler.js), where
 // env.DB is the object's local SQLite storage and env.RESCHEDULE re-arms the
@@ -133,6 +134,18 @@ app.get('/api/search', async (c) => {
 
 app.get('/api/archive', async (c) => {
   return c.json({ activities: await listArchived(c.env, Date.now(), c.req.query('q') || '') });
+});
+
+// ---- Printable sheet ----
+
+app.get('/api/print', async (c) => {
+  const now = Date.now();
+  const project = c.req.query('project') || 'all';
+  const [settings, projects, { activities, lastNotes }] = await Promise.all([
+    getSettings(c.env), listProjects(c.env), loadPrintData(c.env),
+  ]);
+  const sheet = buildPrintSheet({ activities, lastNotes, now, tz: settings.timezone, project });
+  return c.json({ settings, projects, project, now, ...sheet });
 });
 
 // ---- Activities ----
